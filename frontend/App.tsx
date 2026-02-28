@@ -8,6 +8,8 @@ import Simulation from './pages/Simulation';
 import TestConnection from './pages/TestConnection';
 import TestTransactions from './pages/TestTransactions';
 import { useWallet } from './hooks/useWallet';
+import AlgorandDashboard from "./pages/AlgorandDashboard";
+
 
 const App: React.FC = () => {
   const { isConnected, isLoading } = useWallet();
@@ -67,6 +69,7 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
+            <Route path="/algorand" element={<AlgorandDashboard />} />
 
             <Route
               path="/simulation"

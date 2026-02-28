@@ -5,9 +5,9 @@ class AlgorandService {
 
   constructor() {
     this.algodClient = new algosdk.Algodv2(
-      '',
-      'https://testnet-api.algonode.cloud',
-      ''
+      "",
+      "https://testnet-api.algonode.cloud",
+      ""
     );
   }
 
@@ -17,6 +17,19 @@ class AlgorandService {
 
   async getSuggestedParams() {
     return await this.algodClient.getTransactionParams().do();
+  }
+
+  async waitForConfirmation(txId: string) {
+    const status = await this.algodClient.status().do();
+    let lastRound = status["last-round"];
+    while (true) {
+      const pending = await this.algodClient.pendingTransactionInformation(txId).do();
+      if (pending["confirmed-round"] && pending["confirmed-round"] > 0) {
+        return pending;
+      }
+      lastRound++;
+      await this.algodClient.statusAfterBlock(lastRound).do();
+    }
   }
 }
 
