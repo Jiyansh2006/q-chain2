@@ -1,3 +1,5 @@
+import { ethers } from "ethers";
+
 export interface NetworkConfig {
     chainId: number;
     name: string;
@@ -6,13 +8,14 @@ export interface NetworkConfig {
     currency: string;
     currencySymbol: string;
     isTestnet: boolean;
+    type: 'EVM' | 'ALGORAND';
 }
 
 export interface WalletState {
     address: string | null;
     signer: any | null;
     provider: any | null;
-    network: NetworkConfig | null;
+    network: ethers.Network | NetworkConfig | null;
     balance: {
         native: string;
         qToken: string;

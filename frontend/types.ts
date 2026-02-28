@@ -1,11 +1,12 @@
 
 import { ethers } from 'ethers';
+import { NetworkConfig } from './types/blockchain';
 
 export interface WalletState {
   provider: ethers.BrowserProvider | null;
   signer: ethers.JsonRpcSigner | null;
   address: string | null;
-  network: ethers.Network | null;
+  network: ethers.Network | NetworkConfig | null;
   qTokenBalance: string;
   nfts: NFT[];
 }

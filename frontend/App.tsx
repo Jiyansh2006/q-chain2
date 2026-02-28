@@ -7,24 +7,42 @@ import MintNFT from './pages/MintNFT';
 import Simulation from './pages/Simulation';
 import TestConnection from './pages/TestConnection';
 import TestTransactions from './pages/TestTransactions';
-import { useWallet } from './hooks/useWallet';
 import AlgorandDashboard from "./pages/AlgorandDashboard";
-
+import { useWallet } from './hooks/useWallet';
+import { useAlgorandWallet } from './hooks/useAlgorandWallet';
 
 const App: React.FC = () => {
-  const { isConnected, isLoading } = useWallet();
+  const { isConnected: isEthConnected, isLoading: isEthLoading } = useWallet();
+  const { isConnected: isAlgoConnected, isLoading: isAlgoLoading } = useAlgorandWallet();
 
-  // 🔐 Route protection wrapper
+  // 🔐 Ethereum route protection wrapper
   const ProtectedRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
-    if (isLoading) {
+    if (isEthLoading) {
       return (
         <div className="flex justify-center items-center min-h-[60vh] text-lg">
-          Connecting wallet...
+          Connecting Ethereum wallet...
         </div>
       );
     }
 
-    if (!isConnected) {
+    if (!isEthConnected) {
+      return <Navigate to="/" replace />;
+    }
+
+    return children;
+  };
+
+  // 🔐 Algorand route protection wrapper
+  const AlgorandProtectedRoute: React.FC<{ children: ReactNode }> = ({ children }) => {
+    if (isAlgoLoading) {
+      return (
+        <div className="flex justify-center items-center min-h-[60vh] text-lg">
+          Connecting Algorand wallet...
+        </div>
+      );
+    }
+
+    if (!isAlgoConnected) {
       return <Navigate to="/" replace />;
     }
 
@@ -42,7 +60,7 @@ const App: React.FC = () => {
             {/* Public Landing */}
             <Route path="/" element={<WalletConnectPage />} />
 
-            {/* Protected Pages */}
+            {/* Protected Ethereum Pages */}
             <Route
               path="/dashboard"
               element={
@@ -69,7 +87,6 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
-            <Route path="/algorand" element={<AlgorandDashboard />} />
 
             <Route
               path="/simulation"
@@ -98,6 +115,16 @@ const App: React.FC = () => {
               }
             />
 
+            {/* Algorand Routes - Protected with Algorand wallet */}
+            <Route
+              path="/algorand"
+              element={
+                <AlgorandProtectedRoute>
+                  <AlgorandDashboard />
+                </AlgorandProtectedRoute>
+              }
+            />
+
             {/* Fallback */}
             <Route path="*" element={<Navigate to="/" />} />
 
@@ -111,12 +138,25 @@ const App: React.FC = () => {
 /* ================= Wallet Connect Page ================= */
 
 const WalletConnectPage: React.FC = () => {
-  const { connectWallet, isLoading, isConnected } = useWallet();
+  const { connectWallet, isLoading: isEthLoading, isConnected: isEthConnected } = useWallet();
+  const { connectWallet: connectAlgorand, isLoading: isAlgoLoading, isConnected: isAlgoConnected } = useAlgorandWallet();
+  const [selectedChain, setSelectedChain] = React.useState<'ethereum' | 'algorand'>('ethereum');
 
   const handleConnect = async () => {
-    const success = await connectWallet();
-    if (success) {
-      window.location.hash = "#/dashboard";
+    let success = false;
+    
+    if (selectedChain === 'ethereum') {
+      success = await connectWallet();
+      if (success) {
+        window.location.hash = "#/dashboard";
+      }
+    } else {
+      try {
+        await connectAlgorand();
+        window.location.hash = "#/algorand";
+      } catch (error) {
+        console.error("Algorand connection failed:", error);
+      }
     }
   };
 
@@ -127,16 +167,74 @@ const WalletConnectPage: React.FC = () => {
       </h1>
 
       <p className="text-slate-400 mb-8 max-w-md">
-        Quantum-resilient blockchain platform. Connect your wallet to continue.
+        Quantum-resilient blockchain platform. Choose your chain and connect your wallet to continue.
       </p>
+
+      {/* Chain Selection */}
+      <div className="flex gap-4 mb-8">
+        <button
+          onClick={() => setSelectedChain('ethereum')}
+          className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+            selectedChain === 'ethereum'
+              ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+          }`}
+        >
+          🟣 Ethereum
+        </button>
+        <button
+          onClick={() => setSelectedChain('algorand')}
+          className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+            selectedChain === 'algorand'
+              ? 'bg-gradient-to-r from-green-600 to-emerald-500 text-white'
+              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+          }`}
+        >
+          🟢 Algorand
+        </button>
+      </div>
+
+      {/* Connection Status */}
+      <div className="mb-4 text-sm">
+        {selectedChain === 'ethereum' ? (
+          isEthConnected ? (
+            <span className="text-green-400">✓ Ethereum wallet connected</span>
+          ) : (
+            <span className="text-gray-400">Connect MetaMask to continue</span>
+          )
+        ) : (
+          isAlgoConnected ? (
+            <span className="text-green-400">✓ Algorand wallet connected</span>
+          ) : (
+            <span className="text-gray-400">Connect Pera Wallet to continue</span>
+          )
+        )}
+      </div>
 
       <button
         onClick={handleConnect}
-        disabled={isLoading}
-        className="px-8 py-3 bg-gradient-to-r from-blue-600 to-cyan-500 text-white font-bold rounded-lg shadow-lg hover:scale-105 transform transition-transform duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled={isEthLoading || isAlgoLoading}
+        className={`px-8 py-3 text-white font-bold rounded-lg shadow-lg hover:scale-105 transform transition-transform duration-300 disabled:opacity-50 disabled:cursor-not-allowed ${
+          selectedChain === 'ethereum'
+            ? 'bg-gradient-to-r from-blue-600 to-cyan-500'
+            : 'bg-gradient-to-r from-green-600 to-emerald-500'
+        }`}
       >
-        {isLoading ? "Connecting..." : "Connect MetaMask Wallet"}
+        {selectedChain === 'ethereum' ? (
+          isEthLoading ? "Connecting to MetaMask..." : "Connect MetaMask Wallet"
+        ) : (
+          isAlgoLoading ? "Connecting to Pera Wallet..." : "Connect Pera Wallet"
+        )}
       </button>
+
+      {/* Network Info */}
+      <div className="mt-8 text-xs text-gray-500">
+        {selectedChain === 'ethereum' ? (
+          <p>Network: Sepolia Testnet • Currency: ETH</p>
+        ) : (
+          <p>Network: Algorand Testnet • Currency: ALGO</p>
+        )}
+      </div>
     </div>
   );
 };

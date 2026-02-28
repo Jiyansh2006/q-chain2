@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { ethers } from 'ethers';
 import { quantumService } from '../services/QuantumService';
+import { algorandWallet } from "../services/algorandWallet";
+import { algorandService } from "../services/algorandService";
 
 // ==================== CARD COMPONENT ====================
 interface CardProps {
@@ -177,6 +179,11 @@ const MintNFT: React.FC = () => {
   const [quantumStatus, setQuantumStatus] = useState<'checking' | 'online' | 'offline'>('checking');
   const [quantumWalletId, setQuantumWalletId] = useState<string>('');
 
+  // Algorand specific states
+  const [algoAccount, setAlgoAccount] = useState<string | null>(null);
+  const [selectedChain, setSelectedChain] = useState<"ethereum" | "algorand">("ethereum");
+  const [algoLoading, setAlgoLoading] = useState(false);
+
   // Initialize
   useEffect(() => {
     init();
@@ -232,6 +239,19 @@ const MintNFT: React.FC = () => {
     checkQuantumService();
   };
 
+  const connectAlgorand = async () => {
+    try {
+      setAlgoLoading(true);
+      const address = await algorandWallet.connect();
+      setAlgoAccount(address);
+      setStatus({ type: "success", message: "Algorand wallet connected!" });
+    } catch (error: any) {
+      setStatus({ type: "error", message: error.message || "Algorand connection failed" });
+    } finally {
+      setAlgoLoading(false);
+    }
+  };
+
   const checkNetwork = async () => {
     const ethereum = (window as any).ethereum;
     if (!ethereum) return;
@@ -257,7 +277,7 @@ const MintNFT: React.FC = () => {
     setQuantumStatus(isHealthy ? 'online' : 'offline');
 
     if (isHealthy) {
-  console.log('✅ Quantum service connected');
+      console.log('✅ Quantum service connected');
     }
   };
 
@@ -324,21 +344,12 @@ const MintNFT: React.FC = () => {
     }
 
     if (!quantumNFTAddress) {
-  setStatus({
-    type: 'error',
-    message: 'NFT contract not configured.'
-  });
-  return;
-}
-
-const provider = new ethers.BrowserProvider(ethereum);
-const signer = await provider.getSigner();
-
-const nftContract = new ethers.Contract(
-  quantumNFTAddress,
-  QUANTUM_NFT_ABI,
-  signer
-);
+      setStatus({
+        type: 'error',
+        message: 'NFT contract not configured.'
+      });
+      return;
+    }
 
     try {
       const provider = new ethers.BrowserProvider(ethereum);
@@ -401,189 +412,274 @@ const nftContract = new ethers.Contract(
     });
   };
 
-  // FIXED: Generate hash using query parameters (as backend expects)
   const compressImage = (base64: string, maxSize: number = 1000): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.src = `data:image/jpeg;base64,${base64}`;
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      
-      // Calculate new dimensions (max 100px width)
-      const MAX_WIDTH = 100;
-      const scale = MAX_WIDTH / img.width;
-      canvas.width = MAX_WIDTH;
-      canvas.height = img.height * scale;
-      
-      ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const compressedBase64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
-      resolve(compressedBase64);
-    };
-    img.onerror = reject;
-  });
-};
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.src = `data:image/jpeg;base64,${base64}`;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Calculate new dimensions (max 100px width)
+        const MAX_WIDTH = 100;
+        const scale = MAX_WIDTH / img.width;
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scale;
+        
+        ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+        resolve(compressedBase64);
+      };
+      img.onerror = reject;
+    });
+  };
 
-// Updated generateHash with compression
-const generateHash = async () => {
-  if (!form.image) {
-    setStatus({ type: 'error', message: 'Please select an image first' });
-    return;
-  }
-
-  if (!form.name.trim() || !form.description.trim()) {
-    setStatus({ type: 'error', message: 'Fill name and description' });
-    return;
-  }
-
-  try {
-    setLoading(prev => ({ ...prev, hash: true }));
-    setStatus({ type: 'info', message: 'Generating quantum hash...' });
-
-    const base64Data = await fileToBase64(form.image);
-
-    const response = await fetch(
-      "https://qchain-quantum-pqc-backend.onrender.com/generate-hash",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-        body: JSON.stringify({
-          image_data: base64Data,
-          name: form.name.trim(),
-          description: form.description.trim()
-        })
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(errorText);
+  const generateHash = async () => {
+    if (!form.image) {
+      setStatus({ type: 'error', message: 'Please select an image first' });
+      return;
     }
 
-    const data = await response.json();
-
-    if (!data.quantum_hash) {
-      throw new Error("Invalid response from backend");
+    if (!form.name.trim() || !form.description.trim()) {
+      setStatus({ type: 'error', message: 'Fill name and description' });
+      return;
     }
 
-    setForm(prev => ({
-      ...prev,
-      quantumHash: data.quantum_hash
-    }));
-
-    setQuantumStatus('online');
-    setStatus({ type: 'success', message: '✅ Quantum hash generated!' });
-
-  } catch (err: any) {
-    console.error("Hash error:", err);
-    setQuantumStatus('offline');
-    setStatus({ type: 'error', message: err.message || 'Hash generation failed' });
-  } finally {
-    setLoading(prev => ({ ...prev, hash: false }));
-  }
-};
-
-  // pages/MintNFT.tsx - Replace your mintNFT function with this
-
-const mintNFT = async () => {
-  if (!form.name.trim() || !form.description.trim() || !form.image || !form.quantumHash) {
-    setStatus({ type: 'error', message: 'Please fill all fields and generate hash' });
-    return;
-  }
-
-  if (!contract) {
-    setStatus({ type: 'error', message: 'Contract not loaded. Please connect wallet and deploy contract.' });
-    return;
-  }
-
-  if (network.chainId !== 11155111) {
-    setStatus({ type: 'error', message: 'Please switch to Sepolia network (Chain ID 11155111)' });
-    return;
-  }
-
-  try {
-    setLoading({ ...loading, mint: true });
-    setStatus({ type: 'info', message: 'Starting mint process...' });
-
-    // Generate token URI
-    const mockCID = generateMockCID();
-    const tokenURI = `ipfs://${mockCID}`;
-
-    // Get mint price
-    const mintPriceWei = ethers.parseEther(mintPrice);
-    
-    // Estimate gas first
-    const gasEstimate = await contract.mintNFT.estimateGas(
-      form.name,
-      form.description,
-      tokenURI,
-      form.quantumHash,
-      { value: mintPriceWei }
-    );
-    
-    // Add 50% buffer for safety
-    const gasLimit = (gasEstimate * 150n) / 100n;
-    
-    console.log('Gas estimate:', gasEstimate.toString());
-    console.log('Using gas limit:', gasLimit.toString());
-
-    // Mint NFT with estimated gas
-    const tx = await contract.mintNFT(
-      form.name,
-      form.description,
-      tokenURI,
-      form.quantumHash,
-      {
-        value: mintPriceWei,
-        gasLimit: gasLimit
-      }
-    );
-
-    setStatus({ type: 'info', message: 'Transaction submitted. Waiting for confirmation...' });
-    const receipt = await tx.wait();
-
-    // Get token ID
-    let tokenId = '0';
     try {
-      const totalMinted = await contract.totalMinted();
-      tokenId = (BigInt(totalMinted) - 1n).toString();
-    } catch (error) {
-      // Try to get token ID from events
-      const event = receipt.logs.find((log: any) => 
-        log.topics[0] === ethers.id("NFTMinted(uint256,address,string,string,string)")
+      setLoading(prev => ({ ...prev, hash: true }));
+      setStatus({ type: 'info', message: 'Generating quantum hash...' });
+
+      const base64Data = await fileToBase64(form.image);
+
+      const response = await fetch(
+        "https://qchain-quantum-pqc-backend.onrender.com/generate-hash",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify({
+            image_data: base64Data,
+            name: form.name.trim(),
+            description: form.description.trim()
+          })
+        }
       );
-      if (event) {
-        tokenId = ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], event.topics[1])[0].toString();
-      } else {
-        tokenId = '1'; // Fallback
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText);
       }
+
+      const data = await response.json();
+
+      if (!data.quantum_hash) {
+        throw new Error("Invalid response from backend");
+      }
+
+      setForm(prev => ({
+        ...prev,
+        quantumHash: data.quantum_hash
+      }));
+
+      setQuantumStatus('online');
+      setStatus({ type: 'success', message: '✅ Quantum hash generated!' });
+
+    } catch (err: any) {
+      console.error("Hash error:", err);
+      setQuantumStatus('offline');
+      setStatus({ type: 'error', message: err.message || 'Hash generation failed' });
+    } finally {
+      setLoading(prev => ({ ...prev, hash: false }));
+    }
+  };
+
+  const mintNFT = async () => {
+    if (!form.name.trim() || !form.description.trim() || !form.image || !form.quantumHash) {
+      setStatus({ type: 'error', message: 'Please fill all fields and generate hash' });
+      return;
     }
 
-    // Get details
-    let details;
-    try {
-      details = await contract.getNFTDetails(tokenId);
-    } catch (error) {
-      details = [form.name, form.description, form.quantumHash, Math.floor(Date.now() / 1000), account, true, tokenURI];
+    if (!contract) {
+      setStatus({ type: 'error', message: 'Contract not loaded. Please connect wallet and deploy contract.' });
+      return;
     }
+
+    if (network.chainId !== 11155111) {
+      setStatus({ type: 'error', message: 'Please switch to Sepolia network (Chain ID 11155111)' });
+      return;
+    }
+
+    try {
+      setLoading({ ...loading, mint: true });
+      setStatus({ type: 'info', message: 'Starting mint process...' });
+
+      // Generate token URI
+      const mockCID = generateMockCID();
+      const tokenURI = `ipfs://${mockCID}`;
+
+      // Get mint price
+      const mintPriceWei = ethers.parseEther(mintPrice);
+      
+      // Estimate gas first
+      const gasEstimate = await contract.mintNFT.estimateGas(
+        form.name,
+        form.description,
+        tokenURI,
+        form.quantumHash,
+        { value: mintPriceWei }
+      );
+      
+      // Add 50% buffer for safety
+      const gasLimit = (gasEstimate * 150n) / 100n;
+      
+      console.log('Gas estimate:', gasEstimate.toString());
+      console.log('Using gas limit:', gasLimit.toString());
+
+      // Mint NFT with estimated gas
+      const tx = await contract.mintNFT(
+        form.name,
+        form.description,
+        tokenURI,
+        form.quantumHash,
+        {
+          value: mintPriceWei,
+          gasLimit: gasLimit
+        }
+      );
+
+      setStatus({ type: 'info', message: 'Transaction submitted. Waiting for confirmation...' });
+      const receipt = await tx.wait();
+
+      // Get token ID
+      let tokenId = '0';
+      try {
+        const totalMinted = await contract.totalMinted();
+        tokenId = (BigInt(totalMinted) - 1n).toString();
+      } catch (error) {
+        // Try to get token ID from events
+        const event = receipt.logs.find((log: any) => 
+          log.topics[0] === ethers.id("NFTMinted(uint256,address,string,string,string)")
+        );
+        if (event) {
+          tokenId = ethers.AbiCoder.defaultAbiCoder().decode(['uint256'], event.topics[1])[0].toString();
+        } else {
+          tokenId = '1'; // Fallback
+        }
+      }
+
+      // Get details
+      let details;
+      try {
+        details = await contract.getNFTDetails(tokenId);
+      } catch (error) {
+        details = [form.name, form.description, form.quantumHash, Math.floor(Date.now() / 1000), account, true, tokenURI];
+      }
+
+      setMintedNFT({
+        tokenId,
+        name: details[0] || form.name,
+        description: details[1] || form.description,
+        quantumHash: details[2] || form.quantumHash,
+        createdAt: details[3] ? new Date(Number(details[3]) * 1000).toLocaleString() : new Date().toLocaleString(),
+        creator: details[4] || account,
+        isVerified: details[5] || true,
+        tokenURI: details[6] || tokenURI,
+        transactionHash: receipt.hash,
+        quantumEnhanced: quantumStatus === 'online',
+        network: 'Ethereum'
+      });
+
+      setStatus({ type: 'success', message: '🎉 NFT minted successfully!' });
+
+      // Reset form
+      setForm({ name: '', description: '', image: null, quantumHash: '' });
+      setPreview('');
+      if (preview) URL.revokeObjectURL(preview);
+
+    } catch (error: any) {
+      console.error('Minting error:', error);
+      let message = 'Minting failed';
+
+      if (error.code === 'ACTION_REJECTED') {
+        message = 'Transaction rejected by user';
+      } else if (error.message?.includes('insufficient funds')) {
+        message = 'Insufficient funds for transaction';
+      } else if (error.message?.includes('gas')) {
+        message = 'Gas estimation failed. Try increasing gas limit manually.';
+      } else if (error.message?.includes('reverted')) {
+        // Try to decode revert reason
+        try {
+          const reason = error.reason || error.message.match(/reverted: (.*?)$/)?.[1];
+          if (reason) {
+            message = `Contract error: ${reason}`;
+          }
+        } catch {
+          message = 'Contract reverted transaction. Check contract deployment.';
+        }
+      } else if (error.message) {
+        message = error.message;
+      }
+
+      setStatus({ type: 'error', message });
+    } finally {
+      setLoading({ ...loading, mint: false });
+    }
+  };
+
+  const mintNFTAlgorand = async () => {
+  if (!algoAccount) {
+    setStatus({ type: "error", message: "Connect Algorand wallet first" });
+    return;
+  }
+
+  if (!form.name || !form.quantumHash) {
+    setStatus({ type: "error", message: "Generate quantum hash first" });
+    return;
+  }
+
+  try {
+    setAlgoLoading(true);
+    setStatus({ type: "info", message: "Creating Algorand transaction..." });
+
+    // Create NFT transaction
+    const txn = await algorandService.createNFTTransaction(
+      algoAccount,
+      form.name,
+      form.quantumHash
+    );
+
+    setStatus({ type: "info", message: "Please sign the transaction in your Pera Wallet..." });
+
+    // Sign transaction
+    const signedTxn = await algorandWallet.signTransaction(txn);
+
+    setStatus({ type: "info", message: "Submitting transaction to Algorand network..." });
+
+    // Send transaction
+    const response = await algorandService.sendTransaction(signedTxn);
+    const txId = response.txId;
+
+    setStatus({ type: "info", message: "Waiting for confirmation..." });
+
+    // Wait for confirmation
+    await algorandService.waitForConfirmation(txId);
 
     setMintedNFT({
-      tokenId,
-      name: details[0] || form.name,
-      description: details[1] || form.description,
-      quantumHash: details[2] || form.quantumHash,
-      createdAt: details[3] ? new Date(Number(details[3]) * 1000).toLocaleString() : new Date().toLocaleString(),
-      creator: details[4] || account,
-      isVerified: details[5] || true,
-      tokenURI: details[6] || tokenURI,
-      transactionHash: receipt.hash,
-      quantumEnhanced: quantumStatus === 'online'
+      tokenId: 'N/A',
+      name: form.name,
+      description: form.description,
+      quantumHash: form.quantumHash,
+      createdAt: new Date().toLocaleString(),
+      creator: algoAccount,
+      isVerified: true,
+      transactionHash: txId,
+      quantumEnhanced: quantumStatus === 'online',
+      network: 'Algorand'
     });
 
-    setStatus({ type: 'success', message: '🎉 NFT minted successfully!' });
+    setStatus({ type: "success", message: "🎉 Algorand NFT minted successfully!" });
 
     // Reset form
     setForm({ name: '', description: '', image: null, quantumHash: '' });
@@ -591,32 +687,13 @@ const mintNFT = async () => {
     if (preview) URL.revokeObjectURL(preview);
 
   } catch (error: any) {
-    console.error('Minting error:', error);
-    let message = 'Minting failed';
-
-    if (error.code === 'ACTION_REJECTED') {
-      message = 'Transaction rejected by user';
-    } else if (error.message?.includes('insufficient funds')) {
-      message = 'Insufficient funds for transaction';
-    } else if (error.message?.includes('gas')) {
-      message = 'Gas estimation failed. Try increasing gas limit manually.';
-    } else if (error.message?.includes('reverted')) {
-      // Try to decode revert reason
-      try {
-        const reason = error.reason || error.message.match(/reverted: (.*?)$/)?.[1];
-        if (reason) {
-          message = `Contract error: ${reason}`;
-        }
-      } catch {
-        message = 'Contract reverted transaction. Check contract deployment.';
-      }
-    } else if (error.message) {
-      message = error.message;
-    }
-
-    setStatus({ type: 'error', message });
+    console.error("Algorand minting error:", error);
+    setStatus({ 
+      type: "error", 
+      message: error.message || "Algorand mint failed. Please try again." 
+    });
   } finally {
-    setLoading({ ...loading, mint: false });
+    setAlgoLoading(false);
   }
 };
 
@@ -666,44 +743,96 @@ const mintNFT = async () => {
           </h1>
           <p className="text-slate-400">Create quantum-resistant NFTs with post-quantum cryptography</p>
 
+          {/* Chain Toggle */}
+          <div className="flex gap-3 mt-4">
+            <button
+              onClick={() => setSelectedChain("ethereum")}
+              className={`px-4 py-2 rounded-lg ${
+                selectedChain === "ethereum"
+                  ? "bg-purple-600"
+                  : "bg-gray-700 hover:bg-gray-600"
+              }`}
+            >
+              🟣 Ethereum
+            </button>
+
+            <button
+              onClick={() => setSelectedChain("algorand")}
+              className={`px-4 py-2 rounded-lg ${
+                selectedChain === "algorand"
+                  ? "bg-green-600"
+                  : "bg-gray-700 hover:bg-gray-600"
+              }`}
+            >
+              🟢 Algorand
+            </button>
+          </div>
+
           {/* Status Bar */}
           <div className="mt-4 flex flex-wrap items-center gap-4">
-            {account ? (
-              <div className="flex items-center gap-2 bg-gray-800/50 px-4 py-2 rounded-lg border border-gray-700">
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-mono">{formatAddress(account)}</span>
-                <span className="text-xs px-2 py-1 bg-blue-500/20 text-blue-400 rounded">
-                  {network.name}
-                </span>
-                <span className={`text-xs px-2 py-1 rounded ${quantumStatus === 'online'
-                    ? 'bg-green-500/20 text-green-400'
-                    : quantumStatus === 'checking'
-                      ? 'bg-blue-500/20 text-blue-400 animate-pulse'
-                      : 'bg-yellow-500/20 text-yellow-400'
-                  }`}>
-                  {quantumStatus === 'online' ? '🔐 Quantum Ready' :
-                    quantumStatus === 'checking' ? '🔄 Checking...' : '⚠️ Quantum Offline'}
-                </span>
-              </div>
+            {selectedChain === "ethereum" ? (
+              account ? (
+                <div className="flex items-center gap-2 bg-gray-800/50 px-4 py-2 rounded-lg border border-gray-700">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-mono">{formatAddress(account)}</span>
+                  <span className="text-xs px-2 py-1 bg-blue-500/20 text-blue-400 rounded">
+                    {network.name}
+                  </span>
+                  <span className={`text-xs px-2 py-1 rounded ${quantumStatus === 'online'
+                      ? 'bg-green-500/20 text-green-400'
+                      : quantumStatus === 'checking'
+                        ? 'bg-blue-500/20 text-blue-400 animate-pulse'
+                        : 'bg-yellow-500/20 text-yellow-400'
+                    }`}>
+                    {quantumStatus === 'online' ? '🔐 Quantum Ready' :
+                      quantumStatus === 'checking' ? '🔄 Checking...' : '⚠️ Quantum Offline'}
+                  </span>
+                </div>
+              ) : (
+                <button
+                  onClick={connectWallet}
+                  disabled={loading.wallet}
+                  className="px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 rounded-lg hover:opacity-90 disabled:opacity-50 transition-all"
+                >
+                  {loading.wallet ? 'Connecting...' : 'Connect MetaMask'}
+                </button>
+              )
             ) : (
-              <button
-                onClick={connectWallet}
-                disabled={loading.wallet}
-                className="px-6 py-2 bg-gradient-to-r from-blue-600 to-cyan-500 rounded-lg hover:opacity-90 disabled:opacity-50 transition-all"
-              >
-                {loading.wallet ? 'Connecting...' : 'Connect Wallet'}
-              </button>
+              /* Algorand Wallet Section */
+              <div className="mt-0">
+                {algoAccount ? (
+                  <div className="bg-gray-800/50 px-4 py-2 rounded-lg border border-green-600 inline-flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm font-mono">
+                      {formatAddress(algoAccount)}
+                    </span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={connectAlgorand}
+                    disabled={algoLoading}
+                    className="px-6 py-2 bg-green-600 rounded-lg hover:opacity-90 disabled:opacity-50 transition-all"
+                  >
+                    {algoLoading ? "Connecting..." : "Connect Pera Wallet"}
+                  </button>
+                )}
+              </div>
             )}
-            <div className="text-sm text-slate-300">
-              Mint Price: <span className="font-semibold text-white">{formatPrice(mintPrice)}</span>
-            </div>
-            <button
-              onClick={updateContractAddress}
-              className="text-xs px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 transition-colors"
-              title="Update contract address"
-            >
-              Update Contract
-            </button>
+            
+            {selectedChain === "ethereum" && (
+              <>
+                <div className="text-sm text-slate-300">
+                  Mint Price: <span className="font-semibold text-white">{formatPrice(mintPrice)}</span>
+                </div>
+                <button
+                  onClick={updateContractAddress}
+                  className="text-xs px-3 py-1 bg-gray-700 rounded hover:bg-gray-600 transition-colors"
+                  title="Update contract address"
+                >
+                  Update Contract
+                </button>
+              </>
+            )}
           </div>
         </div>
 
@@ -835,22 +964,44 @@ const mintNFT = async () => {
 
               {/* Mint Button */}
               <button
-                onClick={mintNFT}
-                disabled={loading.mint || !account || !form.quantumHash || network.chainId !== 11155111}
-                className={`w-full py-3 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all ${quantumStatus === 'online'
-                    ? 'bg-gradient-to-r from-purple-600 to-pink-600'
-                    : 'bg-gradient-to-r from-blue-600 to-cyan-500'
-                  }`}
+                onClick={selectedChain === "ethereum" ? mintNFT : mintNFTAlgorand}
+                disabled={
+                  selectedChain === "ethereum"
+                    ? loading.mint || !account || !form.quantumHash || network.chainId !== 11155111
+                    : algoLoading || !algoAccount || !form.quantumHash
+                }
+                className={`w-full py-3 rounded-lg font-semibold hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all ${
+                  selectedChain === "ethereum"
+                    ? quantumStatus === 'online'
+                      ? 'bg-gradient-to-r from-purple-600 to-pink-600'
+                      : 'bg-gradient-to-r from-blue-600 to-cyan-500'
+                    : 'bg-gradient-to-r from-green-600 to-emerald-500'
+                }`}
               >
-                {loading.mint ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                    Minting...
-                  </span>
-                ) : network.chainId !== 11155111 ? (
-                  'Switch to Localhost Network'
+                {selectedChain === "ethereum" ? (
+                  loading.mint ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                      Minting...
+                    </span>
+                  ) : network.chainId !== 11155111 ? (
+                    'Switch to Sepolia Network'
+                  ) : (
+                    `Mint NFT ${quantumStatus === 'online' ? '(Quantum)' : ''} (${formatPrice(mintPrice)})`
+                  )
                 ) : (
-                  `Mint NFT ${quantumStatus === 'online' ? '(Quantum)' : ''} (${formatPrice(mintPrice)})`
+                  algoLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                      Minting on Algorand...
+                    </span>
+                  ) : !algoAccount ? (
+                    'Connect Algorand Wallet First'
+                  ) : !form.quantumHash ? (
+                    'Generate Hash First'
+                  ) : (
+                    'Mint on Algorand'
+                  )
                 )}
               </button>
             </div>
@@ -869,7 +1020,7 @@ const mintNFT = async () => {
                       ? 'PQC hashing with lattice-based algorithms'
                       : 'Secure SHA3-256 hashing'
                   },
-                  { icon: '⚡', title: 'Low Cost', desc: 'Optimized for minimal gas fees' },
+                  { icon: '⚡', title: 'Low Cost', desc: selectedChain === 'algorand' ? 'Micro-transaction fees on Algorand' : 'Optimized for minimal gas fees' },
                   { icon: '🌐', title: 'IPFS Storage', desc: 'Decentralized metadata storage' },
                   { icon: '🔍', title: 'Verifiable', desc: 'On-chain hash verification' },
                 ].map((feat, i) => (
@@ -883,43 +1034,78 @@ const mintNFT = async () => {
             </Card>
 
             {/* Network Info */}
-            <Card title="Network Information">
+            <Card title={selectedChain === "ethereum" ? "Ethereum Network Information" : "Algorand Network Information"}>
               <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Network:</span>
-                  <span>{network.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Chain ID:</span>
-                  <span>{network.chainId}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Currency:</span>
-                  <span>{network.currencySymbol}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Status:</span>
-                  <span className={network.chainId === 11155111 ? 'text-green-400' : 'text-yellow-400'}>
-                    {network.chainId === 11155111 ? '✓ Ready' : '⚠️ Switch to Sepolia'}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-400">Contract:</span>
-                  <span
-                    className="text-xs font-mono cursor-pointer hover:text-blue-400"
-                    onClick={() => copyToClipboard(quantumNFTAddress)}
-                    title="Click to copy"
-                  >
-                    {formatAddress(quantumNFTAddress, 4, 4)}
-                  </span>
-                </div>
+                {selectedChain === "ethereum" ? (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Network:</span>
+                      <span>{network.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Chain ID:</span>
+                      <span>{network.chainId}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Currency:</span>
+                      <span>{network.currencySymbol}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Status:</span>
+                      <span className={network.chainId === 11155111 ? 'text-green-400' : 'text-yellow-400'}>
+                        {network.chainId === 11155111 ? '✓ Ready' : '⚠️ Switch to Sepolia'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400">Contract:</span>
+                      <span
+                        className="text-xs font-mono cursor-pointer hover:text-blue-400"
+                        onClick={() => copyToClipboard(quantumNFTAddress)}
+                        title="Click to copy"
+                      >
+                        {formatAddress(quantumNFTAddress, 4, 4)}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Network:</span>
+                      <span>Algorand Testnet</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Currency:</span>
+                      <span>ALGO</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Status:</span>
+                      <span className={algoAccount ? 'text-green-400' : 'text-yellow-400'}>
+                        {algoAccount ? '✓ Connected' : '⚠️ Not Connected'}
+                      </span>
+                    </div>
+                    {algoAccount && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Account:</span>
+                        <span
+                          className="text-xs font-mono cursor-pointer hover:text-blue-400"
+                          onClick={() => copyToClipboard(algoAccount)}
+                          title="Click to copy"
+                        >
+                          {formatAddress(algoAccount, 4, 4)}
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </Card>
 
             {/* Minted NFT Display */}
             {mintedNFT && (
-              <Card title="🎉 Successfully Minted!" className={`border ${mintedNFT.quantumEnhanced ? 'border-purple-500/30' : 'border-green-500/30'
-                }`}>
+              <Card 
+                title={`🎉 Successfully Minted on ${mintedNFT.network}!`} 
+                className={`border ${mintedNFT.quantumEnhanced ? 'border-purple-500/30' : 'border-green-500/30'}`}
+              >
                 <div className="space-y-4">
                   <div>
                     <div className="flex items-center justify-between">
@@ -935,8 +1121,10 @@ const mintNFT = async () => {
 
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <div className="text-gray-400">Token ID</div>
-                      <div className="font-mono">#{mintedNFT.tokenId}</div>
+                      <div className="text-gray-400">
+                        {mintedNFT.network === 'Algorand' ? 'Asset ID' : 'Token ID'}
+                      </div>
+                      <div className="font-mono">#{mintedNFT.tokenId || 'N/A'}</div>
                     </div>
                     <div>
                       <div className="text-gray-400">Creator</div>
@@ -962,7 +1150,9 @@ const mintNFT = async () => {
                   </div>
 
                   <div className="text-sm">
-                    <div className="text-gray-400 mb-1">Transaction Hash</div>
+                    <div className="text-gray-400 mb-1">
+                      {mintedNFT.network === 'Algorand' ? 'Transaction ID' : 'Transaction Hash'}
+                    </div>
                     <div
                       className="font-mono text-xs truncate cursor-pointer hover:text-blue-400 p-2 bg-gray-900/50 rounded"
                       onClick={() => copyToClipboard(mintedNFT.transactionHash)}
@@ -972,21 +1162,22 @@ const mintNFT = async () => {
                     </div>
                   </div>
 
-                  <div className="flex gap-3">
+                  {mintedNFT.network === 'Ethereum' && (
                     <button
                       onClick={verifyNFT}
                       disabled={loading.hash}
-                      className="flex-1 py-2 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded hover:opacity-90 disabled:opacity-50 transition-all"
+                      className="w-full py-2 bg-gradient-to-r from-green-600 to-emerald-500 text-white rounded hover:opacity-90 disabled:opacity-50 transition-all"
                     >
                       {loading.hash ? 'Verifying...' : 'Verify Hash'}
                     </button>
-                    <button
-                      onClick={() => setMintedNFT(null)}
-                      className="flex-1 py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors"
-                    >
-                      Close
-                    </button>
-                  </div>
+                  )}
+
+                  <button
+                    onClick={() => setMintedNFT(null)}
+                    className="w-full py-2 bg-gray-700 text-white rounded hover:bg-gray-600 transition-colors"
+                  >
+                    Close
+                  </button>
                 </div>
               </Card>
             )}
@@ -998,15 +1189,24 @@ const mintNFT = async () => {
           <Card title="How It Works" subtitle="Step-by-step guide to minting quantum NFTs">
             <div className="grid md:grid-cols-4 gap-4">
               {[
-                { step: '1', title: 'Connect Wallet', desc: 'Connect your MetaMask wallet to Localhost network' },
+                { 
+                  step: '1', 
+                  title: selectedChain === 'algorand' ? 'Connect Pera Wallet' : 'Connect Wallet', 
+                  desc: selectedChain === 'algorand' ? 'Connect your Pera Wallet to Algorand' : 'Connect your MetaMask wallet to Sepolia network' 
+                },
                 { step: '2', title: 'Fill Details', desc: 'Enter NFT name, description, and upload image' },
                 {
-                  step: '3', title: quantumStatus === 'online' ? 'Generate Quantum Hash' : 'Generate Hash',
+                  step: '3', 
+                  title: quantumStatus === 'online' ? 'Generate Quantum Hash' : 'Generate Hash',
                   desc: quantumStatus === 'online'
                     ? 'Create quantum-resistant hash using PQC algorithms'
                     : 'Create secure hash for your NFT'
                 },
-                { step: '4', title: 'Mint NFT', desc: 'Pay minting fee and deploy NFT to blockchain' },
+                { 
+                  step: '4', 
+                  title: 'Mint NFT', 
+                  desc: selectedChain === 'algorand' ? 'Mint NFT on Algorand blockchain' : 'Pay minting fee and deploy NFT to blockchain' 
+                },
               ].map((item, i) => (
                 <div key={i} className="text-center p-4 bg-gray-900/30 rounded-lg border border-gray-700">
                   <div className="w-10 h-10 mx-auto mb-3 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-center text-white font-bold">
