@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/genai": "^1.21.0",
+    "algosdk": "^3.5.2",
     "axios": "^1.13.2",
     "crypto-js": "^4.2.0",
     "ethers": "^6.15.0",
